@@ -1,12 +1,16 @@
 package mobi.sevenwinds.app.budget
 
 import io.restassured.RestAssured
+import mobi.sevenwinds.app.author.AuthorTable
 import mobi.sevenwinds.common.ServerTest
 import mobi.sevenwinds.common.jsonBody
 import mobi.sevenwinds.common.toResponse
 import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.insertAndGetId
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.joda.time.DateTime
 import org.junit.Assert
+import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -15,6 +19,7 @@ class BudgetApiKtTest : ServerTest() {
     @BeforeEach
     internal fun setUp() {
         transaction { BudgetTable.deleteAll() }
+        transaction { AuthorTable.deleteAll() }
     }
 
     @Test
@@ -63,6 +68,48 @@ class BudgetApiKtTest : ServerTest() {
     }
 
     @Test
+    fun testStatsFioFilter() {
+        var firstId: Int? = null
+        var secondId: Int? = null
+
+        transaction {
+            firstId = addRecord("иМя пимяу")
+            secondId = addRecord("Тест Тестовый Тестович")
+        }
+
+        Assertions.assertNotNull(firstId)
+        Assertions.assertNotNull(secondId)
+
+        addRecord(BudgetRecord(2020, 5, 10, BudgetType.Приход, firstId))
+        addRecord(BudgetRecord(2020, 5, 5, BudgetType.Приход))
+        addRecord(BudgetRecord(2020, 5, 20, BudgetType.Приход, secondId))
+        addRecord(BudgetRecord(2020, 5, 30, BudgetType.Приход, firstId))
+        addRecord(BudgetRecord(2020, 5, 40, BudgetType.Приход, firstId))
+        addRecord(BudgetRecord(2030, 1, 1, BudgetType.Расход))
+
+        RestAssured.given()
+            .queryParam("limit", 3)
+            .queryParam("offset", 1)
+            .queryParam("fio", "Имя")
+            .get("/budget/year/2020/stats")
+            .toResponse<BudgetYearStatsResponse>().let { response ->
+                val total = response.total
+                val items = response.items
+                val totalByType = response.totalByType
+
+                println("$total / $items / $totalByType")
+
+                Assertions.assertEquals(3, total)
+                Assertions.assertEquals(2, items.size)
+                Assertions.assertEquals(80, totalByType[BudgetType.Приход.name])
+
+                val first = items.first()
+                Assertions.assertNotNull(first.fio)
+                Assertions.assertNotNull(first.createDate)
+            }
+    }
+
+    @Test
     fun testInvalidMonthValues() {
         RestAssured.given()
             .jsonBody(BudgetRecord(2020, -5, 5, BudgetType.Приход))
@@ -83,4 +130,9 @@ class BudgetApiKtTest : ServerTest() {
                 Assert.assertEquals(record, response)
             }
     }
+
+    private fun addRecord(fullname: String) = AuthorTable.insertAndGetId {
+        it[fio] = fullname
+        it[createDate] = DateTime.now()
+    }.value
 }
