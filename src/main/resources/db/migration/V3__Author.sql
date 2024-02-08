@@ -1,3 +1,6 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE EXTENSION IF NOT EXISTS btree_gin;
+
 --- Автор записи
 create table if not exists author
 (
@@ -14,3 +17,5 @@ COMMENT ON COLUMN author.create_date IS 'Дата и время создания
 alter table budget add author_id int references author (id);
 
 COMMENT ON COLUMN budget.author_id IS 'Идентификатор автора записи';
+
+CREATE INDEX IF NOT EXISTS idx_budget_fio_date ON author USING gin (fio gin_trgm_ops, create_date);
