@@ -12,16 +12,15 @@ object BudgetService {
 
     suspend fun addRecord(body: BudgetRecord): BudgetRecord = withContext(Dispatchers.IO) {
         transaction {
-            val author = AuthorTable.select { AuthorTable.id eq body.authorId }
-                .limit(1)
-                .singleOrNull()?.let { AuthorEntity.wrapRow(it) }
-
             val entity = BudgetEntity.new {
                 this.year = body.year
                 this.month = body.month
                 this.amount = body.amount
                 this.type = body.type
-                this.author = author
+                this.author =
+                    if (body.authorId == null) null else AuthorTable.select { AuthorTable.id eq body.authorId }
+                        .limit(1)
+                        .singleOrNull()?.let { AuthorEntity.wrapRow(it) }
             }
 
             return@transaction entity.toResponse()
